@@ -95,7 +95,7 @@ def combine(include_filename: bool = False):
         else:
             lines.append(content)
 
-    output_dir = settings.combined_repo
+    output_dir = settings.final_output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / settings.target_filename
     output_path.write_text("\n".join(lines), encoding="utf-8")

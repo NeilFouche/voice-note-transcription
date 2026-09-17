@@ -1,7 +1,9 @@
 __pycache__/
 *.pyc
+config.local.toml
 Audio Files/
-Transcribed/
+Complete/
 Not Transcribed/
-.processing/
+processing/
+Transcription/
 logs/

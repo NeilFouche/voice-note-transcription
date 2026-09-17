@@ -3,7 +3,7 @@ Handles transcribing audio files.
 
 * Transcribes all audio files in 'Audio Files' folder
 * Successfully transcribed files:
-    * Transcript written to 'Transcribed' folder
+    * Transcript written to 'Complete' folder
     * File names prepended with sequence number
 * Unsuccessfully transcribed files:
     * Moved to 'Not Transcribed' folder
@@ -142,7 +142,7 @@ def transcribe():
         last_num = int(existing[-1].name.split("_", 1)[0])
         next_sequence = last_num + 1
 
-    index_path = settings.logs_repo / "_processed_index.txt"
+    index_path = settings.processed_index_path
     processed = {}
     if index_path.exists():
         for line in index_path.read_text(encoding="utf-8").splitlines():
@@ -172,7 +172,7 @@ def transcribe():
                         text=segment.text.strip(),
                         dictionary=dictionary
                     )
-                    f.write(f"[{segment.start:.2f}s -> {segment.end:.2f}] {corrected}\n")
+                    f.write(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {corrected}\n")
 
             processed[audio_path.name] = output_name
             with open(index_path, "a", encoding="utf-8") as f:
