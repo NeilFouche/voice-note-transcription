@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+Audio Files/
+Transcribed/
+Not Transcribed/
+.processing/
+logs/
