@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from config import settings
+from logging_config import general_logger
 
 SEGMENT_PREFIX = re.compile(r"^\[\d+(?:\.\d+)?s\s*->\s*\d+(?:\.\d+)?s\]\s*")
 SEQUENCE_PREFIX = re.compile(r"^(\d+)_")
@@ -35,7 +36,7 @@ def serialize_file(text: str, keep_header: bool = False) -> str:
 def serialize(keep_header: bool = False):
     input_dir = settings.transcript_clean_output
     if not input_dir.exists():
-        print(f"{input_dir} not found")
+        general_logger.info(f"{input_dir} not found")
         return
 
     output_dir = settings.serialized_repo
@@ -47,7 +48,7 @@ def serialize(keep_header: bool = False):
     ]
 
     if not txt_files:
-        print(f"No transcript files found in {input_dir}")
+        general_logger.info(f"No transcript files found in {input_dir}")
         return
 
     for txt_path in txt_files:
@@ -56,9 +57,9 @@ def serialize(keep_header: bool = False):
 
         output_path = output_dir / txt_path.name
         output_path.write_text(serialized, encoding="utf-8")
-        print(f"Serialized: {txt_path.name}")
+        general_logger.info(f"Serialized: {txt_path.name}")
 
-    print(f"\nDONE - {len(txt_files)} file(s) written to {output_dir}")
+    general_logger.info(f"Serialize stage complete - {len(txt_files)} file(s) written to {output_dir}")
 
 def sort_key(path: Path):
     match = SEQUENCE_PREFIX.match(path.name)
@@ -69,7 +70,7 @@ def sort_key(path: Path):
 def combine(include_filename: bool = False):
     input_dir = settings.serialized_repo
     if not input_dir.exists():
-        print(f"{input_dir} not found")
+        general_logger.info(f"{input_dir} not found")
         return
 
     txt_files = [
@@ -78,7 +79,7 @@ def combine(include_filename: bool = False):
     ]
 
     if not txt_files:
-        print(f"No transcript files found in {input_dir}")
+        general_logger.info(f"No transcript files found in {input_dir}")
         return
 
     txt_files.sort(key=sort_key)
@@ -99,7 +100,7 @@ def combine(include_filename: bool = False):
     output_path = output_dir / settings.target_filename
     output_path.write_text("\n".join(lines), encoding="utf-8")
 
-    print(f"DONE - Combined {len(lines)} file(s) into {output_path}")
+    general_logger.info(f"Combine stage complete - combined {len(lines)} file(s) into {output_path}")
 
 if __name__ == "__main__":
     serialize()

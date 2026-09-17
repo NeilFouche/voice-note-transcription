@@ -13,7 +13,6 @@ class Settings:
     general_log_filename: str = "processing_history.log"
     transcription_log_filename: str = "transcription.log"
     errors_log_filename: str = "errors.log"
-    corrections_log_filename: str = "corrections.log"
     model_size: str = "large-v3"
     default_language: str = "af"
 
@@ -21,7 +20,6 @@ class Settings:
         self.general_log_path: Path = self.logs_repo / self.general_log_filename
         self.transcription_log_path: Path = self.logs_repo / self.transcription_log_filename
         self.errors_log_path: Path = self.logs_repo / self.errors_log_filename
-        self.corrections_log_path: Path = self.logs_repo / self.corrections_log_filename
         self.serialized_repo: Path = self.processing_repo / "serialized"
         self.combined_repo: Path = self.processing_repo / "combined"
 

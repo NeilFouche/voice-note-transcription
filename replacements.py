@@ -11,10 +11,9 @@ to a word (commas, periods, etc.) is left alone.
 """
 
 import re
-from pathlib import Path
-from datetime import datetime
 
 from config import settings
+from logging_config import general_logger, transcription_logger
 
 # Add pairs as you spot recurring issues. Left side: word as it appears
 # in transcripts (any case). Right side: what to replace it with.
@@ -25,8 +24,11 @@ REPLACEMENTS = {
     "commercieel": "kommersieel",
 }
 
-def apply_replacements(text: str, replacements: dict[str, str], log: list[tuple[str, str]]) -> str:
+def apply_replacements(text: str, replacements: dict[str, str]) -> tuple[str, int]:
+    count = 0
+
     def replace_match(match):
+        nonlocal count
         original = match.group(0)
         key = original.lower()
         if key not in replacements:
@@ -34,14 +36,16 @@ def apply_replacements(text: str, replacements: dict[str, str], log: list[tuple[
         replacement = replacements[key]
         if original[0].isupper():
             replacement = replacement.capitalize()
-        log.append((original, replacement))
+        transcription_logger.info(f"Replaced: {original} -> {replacement}")
+        count += 1
         return replacement
 
     pattern = re.compile(
         r"\b(" + "|".join(re.escape(w) for w in replacements) + r")\b",
         re.IGNORECASE
     )
-    return pattern.sub(replace_match, text)
+    updated_text = pattern.sub(replace_match, text)
+    return updated_text, count
 
 def apply():
     output_dir = settings.transcript_clean_output
@@ -51,30 +55,24 @@ def apply():
     ]
 
     if not txt_files:
-        print(f"No transcript files found in {output_dir}")
+        general_logger.info(f"No transcript files found in {output_dir}")
         return
 
-    all_changes = []
+    total_changes = 0
 
     for txt_path in txt_files:
         original_text = txt_path.read_text(encoding="utf-8")
-        file_changes = []
-        updated_text = apply_replacements(original_text, REPLACEMENTS, file_changes)
+        updated_text, count = apply_replacements(original_text, REPLACEMENTS)
 
         if updated_text != original_text:
             txt_path.write_text(updated_text, encoding="utf-8")
-            print(f"Updated: {txt_path} ({len(file_changes)} replacement(s))")
-            all_changes.extend((txt_path.name, orig, new) for orig, new in file_changes)
+            general_logger.info(f"Updated: {txt_path} ({count} replacement(s))")
+            total_changes += count
 
-    if all_changes:
-        with open(settings.general_log_path, "a", encoding="utf-8") as f:
-            f.write(f"\n--- Run at {datetime.now().isoformat(timespec='seconds')} ---\n")
-            for filename, original, replacement in all_changes:
-                f.write(f"{filename}: {original} -> {replacement}\n")
-
-        print(f"\nLogged {len(all_changes)} replacement(s) to {settings.general_log_path.name}")
+    if total_changes:
+        general_logger.info(f"Applied {total_changes} replacement(s) across {len(txt_files)} file(s)")
     else:
-        print("No matches found - no files changed.")
+        general_logger.info("No matches found - no files changed.")
 
 if __name__ == "__main__":
     apply()

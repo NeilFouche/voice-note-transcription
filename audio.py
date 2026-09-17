@@ -30,6 +30,7 @@ from faster_whisper import WhisperModel
 from spylls.hunspell import Dictionary
 
 from config import settings
+from logging_config import general_logger, transcription_logger, error_logger
 
 AUDIO_EXTENSIONS = {".ogg", ".mp3", ".wav", ".mp4", ".flac", ".opus"}
 
@@ -83,7 +84,7 @@ def generate_candidates(word: str):
 
     return candidates
 
-def correct_word(word: str, dictionary: Dictionary, corrections_log: list):
+def correct_word(word: str, dictionary: Dictionary) -> str:
     stripped = word.strip(".,!?:;\"'")
     suffix  = word[len(stripped):]
 
@@ -94,22 +95,23 @@ def correct_word(word: str, dictionary: Dictionary, corrections_log: list):
         if dictionary.lookup(candidate):
             if stripped[0].isupper():
                 candidate = candidate.capitalize()
-            corrections_log.append((stripped, candidate))
+            transcription_logger.info(f"Corrected: {stripped} -> {candidate}")
             return candidate + suffix
 
+    transcription_logger.info(f"Not in dictionary: {stripped}")
     return word
 
-def correct_text(text: str, dictionary: Dictionary, log: list) -> str:
-    return " ".join(correct_word(w, dictionary, log) for w in text.split())
+def correct_text(text: str, dictionary: Dictionary) -> str:
+    return " ".join(correct_word(w, dictionary) for w in text.split())
 
 def transcribe():
     settings.ensure_dirs()
     input_dir = settings.input_dir
 
-    print("Loading Afrikaans dictionary...")
+    general_logger.info("Loading Afrikaans dictionary...")
     dictionary = Dictionary.from_files(str(settings.dictionaries_repo / "afrikaans" / "af_ZA"))
 
-    print("Loading Whisper model...")
+    general_logger.info("Loading Whisper model...")
     model = WhisperModel(
         settings.model_size,
         device="cpu",
@@ -119,7 +121,7 @@ def transcribe():
     audio_files = [f for f in input_dir.iterdir() if f.suffix.lower() in AUDIO_EXTENSIONS]
 
     if not audio_files:
-        print(f"No audio files in {input_dir}")
+        general_logger.info(f"No audio files in {input_dir}")
         return
 
     # Sort chronologically by embedded datetime
@@ -148,15 +150,13 @@ def transcribe():
                 src, out = line.split("\t", 1)
                 processed[src] = out
 
-    corrections_log = []
-
     for audio_path in audio_files:
         if audio_path.name in processed:
-            print(f"Skipping (already transcribed): {audio_path.name}")
+            general_logger.info(f"Skipping (already transcribed): {audio_path.name}")
             continue
 
         try:
-            print(f"Transcribing: {audio_path.name}")
+            general_logger.info(f"Transcribing: {audio_path.name}")
             segments, _ = model.transcribe(
                 audio=audio_path,
                 beam_size=5,
@@ -170,8 +170,7 @@ def transcribe():
                 for segment in segments:
                     corrected = correct_text(
                         text=segment.text.strip(),
-                        dictionary=dictionary,
-                        log=corrections_log
+                        dictionary=dictionary
                     )
                     f.write(f"[{segment.start:.2f}s -> {segment.end:.2f}] {corrected}\n")
 
@@ -179,25 +178,16 @@ def transcribe():
             with open(index_path, "a", encoding="utf-8") as f:
                 f.write(f"{audio_path.name}\t{output_name}\n")
 
-            print(f"  -> Saved to {output_name}")
+            general_logger.info(f"Saved to {output_name}")
             next_sequence += 1
-        except Exception as e:
+        except Exception:
             error_path = settings.transcript_error_output / audio_path.name
             shutil.move(str(audio_path), str(error_path))
-            with open(settings.errors_log_path, "a", encoding="utf-8") as f:
-                f.write(f"{datetime.now().isoformat(timespec='seconds')}\t{audio_path.name}\t{e}\n")
-            print(f"  -> Failed ({e}); moved to {settings.transcript_error_output}")
+            error_logger.exception(f"Failed to transcribe {audio_path.name}")
+            general_logger.info(f"Moved {audio_path.name} to {settings.transcript_error_output} (transcription failed)")
             continue
 
-    if corrections_log:
-        with open(settings.corrections_log_path, "a", encoding="utf-8") as f:
-            f.write(f"\n--- Run at {datetime.now().isoformat(timespec='seconds')} ---\n")
-            for original, corrected in corrections_log:
-                f.write(f"{original} -> {corrected}\n")
-
-        print(f"Logged {len(corrections_log)} spelling correction(s) to {settings.corrections_log_path.name}")
-
-    print("DONE")
+    general_logger.info("Transcription stage complete")
 
 if __name__ == "__main__":
     transcribe()
