@@ -49,7 +49,7 @@ class Settings:
     general_log_filename: str = "processing_history.log"
     transcription_log_filename: str = "transcription.log"
     errors_log_filename: str = "errors.log"
-    model_size: str = "medium"
+    model_size: str = "large-v3"
     default_language: str = "af"
 
     def __post_init__(self):
@@ -113,6 +113,6 @@ settings = Settings(
     general_log_filename=_setting("general_log_filename", "processing_history.log"),
     transcription_log_filename=_setting("transcription_log_filename", "transcription.log"),
     errors_log_filename=_setting("errors_log_filename", "errors.log"),
-    model_size=_setting("model_size", "medium"),
+    model_size=_setting("model_size", "large-v3"),
     default_language=_setting("default_language", "af"),
 )

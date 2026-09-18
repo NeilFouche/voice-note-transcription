@@ -21,14 +21,19 @@ Dictionary files needed:
     dictionaries/afrikaans/af_ZA.aff
 """
 
+import fnmatch
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import huggingface_hub
+import tqdm as tqdm_module
 from faster_whisper import WhisperModel
 from spylls.hunspell import Dictionary
 
+import download_progress
 import performance
 import progress
 from config import settings
@@ -42,12 +47,15 @@ RULES = [
     (r"sch", "sk"),
     (r"ische", "iese"),
     (r"ij", "y"),
+    (r"y", "i"),
     (r"tie\b", "sie"),
     (r"ct", "ks"),
     (r"([aeiou])v([aeiou])", r"\1w\2"),
     (r"\bc([aou])", r"k\1"),
-    (r"^z", "s"),
-    (r"cht", "gt"),
+    (r"^z", r"s"),
+    (r"ch", r"g"),
+    (r"nc", r"ns"),
+    (r"mt", r"m"),
 ]
 
 # Add pairs as you spot recurring issues. Left side: word as it appears
@@ -58,7 +66,10 @@ REPLACEMENTS = {
     "commerciële": "kommersiële",
     "correct": "korrek",
     "commercieel": "kommersieel",
+    "rechts": "regs",
+    "bykie": "bietjie"
 }
+
 _REPLACEMENTS_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(w) for w in REPLACEMENTS) + r")\b",
     re.IGNORECASE,
@@ -120,11 +131,14 @@ def correct_text(text: str, dictionary: Dictionary) -> str:
     return apply_replacements(corrected)
 
 
-# Cached lazily and reused across calls - loading the dictionary and model
-# is expensive, and transcribe_batch() may be invoked repeatedly within
-# the same process (once per run in the desktop app), not just once ever.
+# Cached lazily and reused across calls - loading the dictionary/model is
+# expensive, and transcribe_batch() may be invoked repeatedly within the
+# same process (once per run in the desktop app), not just once ever.
+# Models are cached per size, since the user can switch sizes at runtime
+# (see the model picker in app.py) - keeps switching back to a
+# previously-used size instant instead of reloading from scratch.
 _dictionary: Dictionary | None = None
-_model: WhisperModel | None = None
+_models: dict[str, WhisperModel] = {}
 
 
 def _get_dictionary() -> Dictionary:
@@ -135,23 +149,141 @@ def _get_dictionary() -> Dictionary:
     return _dictionary
 
 
-def _get_model() -> WhisperModel:
-    global _model
-    if _model is None:
-        general_logger.info("Loading Whisper model...")
-        # A bundled local copy (packaged builds ship one under models/<size>
-        # so transcription works fully offline) takes priority; otherwise
-        # fall back to faster-whisper's normal behaviour of downloading
-        # from the Hugging Face Hub and caching it - convenient for
-        # running from source without needing every model size on disk.
-        local_model_path = settings.models_repo / settings.model_size
-        model_source = str(local_model_path) if local_model_path.exists() else settings.model_size
-        _model = WhisperModel(
+def is_model_available_locally(model_size: str) -> bool:
+    """
+    True if model_size can be loaded without hitting the network - either
+    bundled with the app, or already downloaded/cached from a previous
+    run. Used to warn before a switch that's about to trigger a
+    multi-hundred-MB-to-several-GB download, rather than the app just
+    appearing to hang.
+    """
+    if (settings.models_repo / model_size).exists():
+        return True
+    try:
+        from faster_whisper.utils import download_model
+        download_model(model_size, local_files_only=True)
+        return True
+    except Exception:
+        return False
+
+
+# The exact set of files faster_whisper.utils.download_model() fetches -
+# mirrored here since that function hardcodes tqdm_class to a disabled
+# tqdm, giving no way to observe progress through it. download_model_size()
+# below calls huggingface_hub directly instead, using this same allow-list,
+# so the two stay interchangeable (same files land in the same HF cache
+# location either way).
+_MODEL_FILE_PATTERNS = [
+    "config.json",
+    "preprocessor_config.json",
+    "model.bin",
+    "tokenizer.json",
+    "vocabulary.*",
+]
+
+
+def _model_total_bytes(repo_id: str) -> int:
+    api = huggingface_hub.HfApi()
+    info = api.model_info(repo_id, files_metadata=True)
+    return sum(
+        f.size for f in info.siblings
+        if f.size and any(fnmatch.fnmatch(f.rfilename, pattern) for pattern in _MODEL_FILE_PATTERNS)
+    )
+
+
+def download_model_size(model_size: str):
+    """
+    Downloads model_size's files with real byte-level progress, reported
+    through download_progress.py for the UI's explicit "download this
+    model now" action (distinct from the automatic on-demand download
+    transcribe_batch() falls back to when Transcribe is hit on a model
+    that isn't available yet - that path has no progress reporting).
+
+    huggingface_hub's own per-file tqdm bars (the ones with unit="B") do
+    update smoothly in real time during the network transfer, so this
+    hooks a tqdm subclass into snapshot_download() and aggregates them -
+    confirmed empirically, since that behaviour isn't documented. tqdm
+    instances get *reused* across files (reset() zeroes them out rather
+    than a fresh instance being created per file), so bytes have to be
+    banked on reset()/close() before they're lost. The "Fetching N files"
+    bar snapshot_download also creates counts files, not bytes (unit is
+    unset) - excluded via the unit check.
+    """
+    from faster_whisper.utils import _MODELS
+
+    repo_id = _MODELS.get(model_size)
+    if repo_id is None:
+        raise ValueError(f"Unknown model size '{model_size}'")
+
+    download_progress.start(model_size)
+    try:
+        total_bytes = _model_total_bytes(repo_id)
+        lock = threading.Lock()
+        completed_bytes = [0]
+        current = {"n": 0}
+
+        def report():
+            if total_bytes > 0:
+                with lock:
+                    downloaded = completed_bytes[0] + current["n"]
+                download_progress.set_percent(downloaded / total_bytes * 100)
+
+        class _ProgressTqdm(tqdm_module.tqdm):
+            def update(self, n=1):
+                result = super().update(n)
+                if self.unit == "B":
+                    with lock:
+                        current["n"] = self.n
+                    report()
+                return result
+
+            def reset(self, total=None):
+                if self.unit == "B":
+                    with lock:
+                        completed_bytes[0] += self.n
+                        current["n"] = 0
+                return super().reset(total=total)
+
+            def close(self):
+                if self.unit == "B":
+                    with lock:
+                        completed_bytes[0] += self.n
+                        current["n"] = 0
+                    report()
+                super().close()
+
+        general_logger.info(f"Downloading model '{model_size}'...")
+        huggingface_hub.snapshot_download(
+            repo_id,
+            allow_patterns=_MODEL_FILE_PATTERNS,
+            tqdm_class=_ProgressTqdm,
+        )
+        download_progress.set_percent(100.0)
+        download_progress.finish()
+        general_logger.info(f"Downloaded model '{model_size}'")
+    except Exception as e:
+        error_logger.exception(f"Failed to download model '{model_size}'")
+        download_progress.finish(error=str(e))
+
+
+def _get_model(model_size: str) -> WhisperModel:
+    if model_size not in _models:
+        general_logger.info(f"Loading Whisper model ({model_size})...")
+        # A bundled local copy (packaged builds ship one or more under
+        # models/<size> so transcription works fully offline) takes
+        # priority; otherwise fall back to faster-whisper's normal
+        # behaviour of downloading from the Hugging Face Hub and caching
+        # it - this is what actually performs the download for a size
+        # that isn't bundled, once the caller has already warned the user
+        # about it via is_model_available_locally().
+        local_model_path = settings.models_repo / model_size
+        model_source = str(local_model_path) if local_model_path.exists() else model_size
+        _models[model_size] = WhisperModel(
             model_source,
             device="cpu",
             compute_type="int8"
         )
-    return _model
+    return _models[model_size]
 
 
 @dataclass
@@ -168,10 +300,14 @@ def _sort_key(path: Path):
     return (1, path.name, 0)
 
 
-def transcribe_batch(file_paths: list[Path]) -> tuple[bool, BatchResult]:
+def transcribe_batch(file_paths: list[Path], model_size: str | None = None) -> tuple[bool, BatchResult]:
     """
     Transcribes every file in file_paths, in chronological order where a
     WhatsApp-style timestamp can be recovered from the filename.
+
+    model_size defaults to settings.model_size (the configured/bundled
+    default) if not given - the desktop app's model picker passes the
+    user's currently selected size explicitly instead.
 
     Returns (completed, result). completed is False if the run was
     cancelled partway through (see progress.py) - the file being
@@ -182,9 +318,16 @@ def transcribe_batch(file_paths: list[Path]) -> tuple[bool, BatchResult]:
     doesn't manage a persistent input folder to keep tidy - the source
     file the caller passed in is left exactly where it was.
     """
+    model_size = model_size or settings.model_size
+
     settings.ensure_dirs()
     dictionary = _get_dictionary()
-    model = _get_model()
+
+    if not is_model_available_locally(model_size):
+        general_logger.info(f"Model '{model_size}' isn't downloaded yet - fetching it now (one-time, needs internet)...")
+        progress.set_stage("downloading_model")
+
+    model = _get_model(model_size)
 
     ordered = sorted(file_paths, key=_sort_key)
     total = len(ordered)
@@ -241,7 +384,7 @@ def transcribe_batch(file_paths: list[Path]) -> tuple[bool, BatchResult]:
             cancelled = True
             break
 
-    performance.record(audio_seconds_processed, time.monotonic() - started_at)
+    performance.record(audio_seconds_processed, time.monotonic() - started_at, model_size)
     if cancelled:
         general_logger.info("Transcription stage cancelled")
     else:

@@ -37,6 +37,11 @@ _cancel_event = threading.Event()
 STAGE_BANDS = {
     "idle": (0, 0),
     "starting": (0, 0),
+    # No file-level progress signal for a model download (no byte-level
+    # reporting yet - see transcription.py), so this stays at 0% for its
+    # whole duration; the status *text* is what tells the user something
+    # is happening, same as "starting".
+    "downloading_model": (0, 0),
     "transcribing": (0, 95),
     "saving": (95, 100),
 }

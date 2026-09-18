@@ -2,9 +2,11 @@
 #
 # Produces a folder build (not --onefile): a folder containing the exe
 # plus an _internal directory with the Python runtime, all dependencies,
-# and the bundled resources (Afrikaans dictionary, "medium" Whisper
-# model). Chosen over --onefile so startup doesn't re-extract this large
-# a dependency tree (ctranslate2, onnxruntime, numpy, the model itself)
+# and the bundled resources (Afrikaans dictionary, "large-v3" Whisper
+# model - the only one of the three that tested as acceptable quality,
+# so it's the one shipped rather than a smaller/faster default).
+# Chosen over --onefile so startup doesn't re-extract this large a
+# dependency tree (ctranslate2, onnxruntime, numpy, the model itself)
 # on every launch.
 #
 # Build with:
@@ -20,13 +22,14 @@ PROJECT_DIR = Path(SPECPATH)
 
 datas = [
     (str(PROJECT_DIR / "dictionaries"), "dictionaries"),
-    (str(PROJECT_DIR / "models" / "medium"), "models/medium"),
+    (str(PROJECT_DIR / "models" / "large-v3"), "models/large-v3"),
     # Bundled as a plain readable file too, not just embedded via EXE()'s
     # icon= below - app.py reads this one back at runtime to set the
     # window's titlebar/taskbar icon (pywebview's WebView2 backend doesn't
     # do this itself), which needs an actual file path, not just the
     # icon baked into the exe's own resource section.
     (str(PROJECT_DIR / "icon.ico"), "."),
+    (str(PROJECT_DIR / "vendor" / "fluent-web-components.min.js"), "vendor"),
 ]
 binaries = []
 hiddenimports = []
