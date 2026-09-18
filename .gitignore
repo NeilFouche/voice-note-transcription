@@ -7,3 +7,10 @@ Not Transcribed/
 processing/
 Transcription/
 logs/
+
+# Downloaded model weights and build output - large, regenerable, never committed
+models/
+build/
+dist/
+installer_output/
+*.zip

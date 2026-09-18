@@ -12,6 +12,7 @@ to a word (commas, periods, etc.) is left alone.
 
 import re
 
+import progress
 from config import settings
 from logging_config import general_logger, transcription_logger
 
@@ -47,12 +48,14 @@ def apply_replacements(text: str, replacements: dict[str, str]) -> tuple[str, in
     updated_text = pattern.sub(replace_match, text)
     return updated_text, count
 
-def apply():
+def apply(only_filenames: set[str] | None = None):
     output_dir = settings.transcript_clean_output
     txt_files = [
         f for f in output_dir.glob("*.txt")
         if not f.name.startswith("_")
     ]
+    if only_filenames is not None:
+        txt_files = [f for f in txt_files if f.name in only_filenames]
 
     if not txt_files:
         general_logger.info(f"No transcript files found in {output_dir}")
@@ -60,7 +63,9 @@ def apply():
 
     total_changes = 0
 
-    for txt_path in txt_files:
+    for i, txt_path in enumerate(txt_files, start=1):
+        progress.set_current_file(i, txt_path.name, len(txt_files))
+
         original_text = txt_path.read_text(encoding="utf-8")
         updated_text, count = apply_replacements(original_text, REPLACEMENTS)
 
@@ -68,6 +73,8 @@ def apply():
             txt_path.write_text(updated_text, encoding="utf-8")
             general_logger.info(f"Updated: {txt_path} ({count} replacement(s))")
             total_changes += count
+
+        progress.set_file_fraction(1.0)
 
     if total_changes:
         general_logger.info(f"Applied {total_changes} replacement(s) across {len(txt_files)} file(s)")

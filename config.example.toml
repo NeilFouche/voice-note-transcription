@@ -1,0 +1,28 @@
+# Copy this file to config.local.toml and uncomment/edit only the values
+# you want to change. config.local.toml is gitignored - it's for
+# machine-specific overrides and is never committed.
+#
+# Paths may be absolute (e.g. "D:/VoiceNotes/Audio Files") or relative,
+# in which case they resolve against this project's folder.
+
+[paths]
+# input_dir = "Audio Files"
+# transcript_clean_output = "Complete"
+# transcript_error_output = "Not Transcribed"
+# dictionaries_repo = "dictionaries"
+# models_repo = "models"
+# processing_repo = "processing"
+# logs_repo = "logs"
+# final_output_dir = "Transcription"
+
+[transcription]
+# model_size = "medium"
+# default_language = "af"
+
+[logging]
+# general_log_filename = "processing_history.log"
+# transcription_log_filename = "transcription.log"
+# errors_log_filename = "errors.log"
+
+[output]
+# target_filename = "transcriptions.xlsx"
