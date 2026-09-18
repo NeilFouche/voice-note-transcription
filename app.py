@@ -17,20 +17,25 @@ Api.get_status() instead of fetch("/status")) rather than pushed from
 Python - same architecture as before, just a different transport.
 """
 
+import ctypes
+import sys
 import threading
+import time
 from pathlib import Path
 
 import av
 import webview
+from webview import FileDialog
 
 import excel_output
 import performance
 import progress
 import transcription
-from config import settings
+from config import RESOURCE_DIR, settings
 from logging_config import error_logger, general_logger
 
 WINDOW_TITLE = "Voice Note Transcription"
+ICON_PATH = RESOURCE_DIR / "icon.ico"
 
 
 def _probe_duration(path: str) -> float:
@@ -57,14 +62,14 @@ class Api:
 
     def pick_files(self):
         paths = self._window.create_file_dialog(
-            webview.OPEN_DIALOG,
+            FileDialog.OPEN,
             allow_multiple=True,
             file_types=("Audio files (*.ogg;*.mp3;*.wav;*.mp4;*.flac;*.opus)", "All files (*.*)"),
         )
         return list(paths) if paths else []
 
     def pick_folder(self):
-        paths = self._window.create_file_dialog(webview.FOLDER_DIALOG)
+        paths = self._window.create_file_dialog(FileDialog.FOLDER)
         if not paths:
             return []
         folder = Path(paths[0])
@@ -133,7 +138,7 @@ class Api:
             return {"status": "error", "detail": "No transcript available yet"}
 
         chosen = self._window.create_file_dialog(
-            webview.SAVE_DIALOG,
+            FileDialog.SAVE,
             save_filename=settings.target_filename,
             file_types=("Excel files (*.xlsx)",),
         )
@@ -431,7 +436,7 @@ PAGE = """<!doctype html>
       clearInterval(pollTimer);
       pollTimer = null;
       cancelPending = false;
-      setTerminalStatus("Done - transcribed in " + formatDuration(data.elapsed_seconds) + ".", "done");
+      setTerminalStatus("Done - Transcribed in " + formatDuration(data.elapsed_seconds) + ".", "done");
       cancelBtn.hidden = true;
       saveBtn.disabled = false;
       transcribeBtn.disabled = selectedPaths.length === 0;
@@ -501,6 +506,51 @@ PAGE = """<!doctype html>
 """
 
 
+def _set_window_icon(title: str, icon_path: Path):
+    """
+    Sets the titlebar/taskbar icon via the raw Win32 API, since pywebview's
+    Windows backend (edgechromium/WebView2 - the modern one, with good
+    CSS/JS support) doesn't set a window icon at all; only its older
+    winforms backend does. The window frame is still a WinForms Form
+    under the hood either way, so this isn't fighting the toolkit, just
+    doing what that other backend already does, ourselves.
+
+    Runs as webview.start()'s startup callback, which fires before the
+    native window is necessarily visible/findable yet, so this polls
+    briefly for the window to exist rather than assuming it's there
+    immediately.
+    """
+    if sys.platform != "win32" or not icon_path.exists():
+        return
+
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = 0
+        for _ in range(50):  # up to ~5s
+            hwnd = user32.FindWindowW(None, title)
+            if hwnd:
+                break
+            time.sleep(0.1)
+        if not hwnd:
+            return
+
+        IMAGE_ICON = 1
+        LR_LOADFROMFILE = 0x00000010
+        LR_DEFAULTSIZE = 0x00000040
+        WM_SETICON = 0x0080
+        ICON_SMALL = 0
+        ICON_BIG = 1
+
+        big = user32.LoadImageW(None, str(icon_path), IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE)
+        small = user32.LoadImageW(None, str(icon_path), IMAGE_ICON, 16, 16, LR_LOADFROMFILE)
+        if big:
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, big)
+        if small:
+            user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, small)
+    except Exception:
+        error_logger.exception("Failed to set window icon")
+
+
 def main():
     settings.ensure_dirs()
     api = Api()
@@ -514,7 +564,7 @@ def main():
     )
     api.set_window(window)
     general_logger.info("Starting desktop app")
-    webview.start()
+    webview.start(_set_window_icon, args=(WINDOW_TITLE, ICON_PATH))
 
 
 if __name__ == "__main__":

@@ -1,12 +1,8 @@
 __pycache__/
 *.pyc
 config.local.toml
-Audio Files/
-Complete/
-Not Transcribed/
-processing/
-Transcription/
 logs/
+data/
 
 # Downloaded model weights and build output - large, regenerable, never committed
 models/

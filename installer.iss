@@ -20,6 +20,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName}
+SetupIconFile=icon.ico
 PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 OutputDir=installer_output

@@ -21,6 +21,12 @@ PROJECT_DIR = Path(SPECPATH)
 datas = [
     (str(PROJECT_DIR / "dictionaries"), "dictionaries"),
     (str(PROJECT_DIR / "models" / "medium"), "models/medium"),
+    # Bundled as a plain readable file too, not just embedded via EXE()'s
+    # icon= below - app.py reads this one back at runtime to set the
+    # window's titlebar/taskbar icon (pywebview's WebView2 backend doesn't
+    # do this itself), which needs an actual file path, not just the
+    # icon baked into the exe's own resource section.
+    (str(PROJECT_DIR / "icon.ico"), "."),
 ]
 binaries = []
 hiddenimports = []
@@ -68,6 +74,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(PROJECT_DIR / "icon.ico"),
 )
 
 coll = COLLECT(
