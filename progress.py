@@ -1,24 +1,21 @@
 """
-Shared in-process progress state for the web UI's polling endpoint.
+Shared in-process progress state for the desktop app's polling bridge call.
 
-Progress is derived from real markers the pipeline reports as it works -
-not from a time-based countdown. Each stage owns a percentage band of the
-overall bar, sized by how much of a typical run it takes (transcription is
-by far the dominant cost; the other stages are simple text processing over
-the same small set of files and finish in a fraction of a second each).
-Within a stage, progress advances by files completed, and - during
-transcription specifically - by how far into the current file's audio
-Whisper has actually gotten, using the segment timestamps it already
-reports (segment.end vs the file's total duration).
+Progress is derived from real markers transcription.py reports as it
+works - not from a time-based countdown. Transcription owns almost the
+whole bar (it's overwhelmingly the dominant cost); saving the workbook at
+the end is a near-instant final step. Within a stage, progress advances
+by files completed, and - during transcription specifically - by how far
+into the current file's audio Whisper has actually gotten, using the
+segment timestamps it already reports (segment.end vs the file's total
+duration).
 
-The pipeline runs in a background thread per web request (see webapp.py);
-this module is the thread-safe handoff so webapp.py's /status endpoint can
-report what that thread is doing right now. The CLI pipeline (main.py)
-never reads this - updating it from there is harmless, just unobserved.
+The batch runs in a background thread per run (see app.py); this module
+is the thread-safe handoff so the UI's polling bridge call can report
+what that thread is doing right now.
 
-Single global state is fine here: the app only ever runs one pipeline job
-at a time (enforced by webapp.py's pipeline lock), so there's nothing to
-key by job id.
+Single global state is fine here: the app only ever runs one batch at a
+time (enforced by app.py's run lock), so there's nothing to key by job id.
 """
 
 import threading
@@ -29,21 +26,19 @@ _lock = threading.Lock()
 # Cooperative cancellation: a single in-flight Whisper inference call can't
 # be interrupted mid-computation without a much bigger architecture change
 # (running it in a killable subprocess), so cancellation is checked at safe
-# points between files instead - see audio.py's transcribe() loop. This
-# means the file currently being transcribed still finishes; nothing after
-# it starts.
+# points between files instead - see transcription.py's transcribe_batch()
+# loop. This means the file currently being transcribed still finishes;
+# nothing after it starts.
 _cancel_event = threading.Event()
 
-# (stage -> (start_pct, end_pct)), in pipeline order. Transcription is the
-# dominant cost by far, so it owns most of the bar; the rest are thin
-# bands that mostly exist so the bar still visibly moves during them.
+# (stage -> (start_pct, end_pct)). Transcription is the dominant cost by
+# far, so it owns almost the whole bar; saving is a near-instant final
+# step that mostly exists so the bar still visibly moves at the very end.
 STAGE_BANDS = {
     "idle": (0, 0),
     "starting": (0, 0),
-    "transcribing": (0, 90),
-    "replacements": (90, 94),
-    "serializing": (94, 97),
-    "combining": (97, 100),
+    "transcribing": (0, 95),
+    "saving": (95, 100),
 }
 
 _state = {

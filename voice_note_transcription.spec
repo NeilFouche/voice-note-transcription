@@ -26,28 +26,18 @@ binaries = []
 hiddenimports = []
 
 # These have native binaries / dynamic imports that PyInstaller's static
-# analysis can't fully see through on its own.
+# analysis can't fully see through on its own. pywebview and clr_loader
+# (its .NET interop layer on Windows) already have community hooks in
+# pyinstaller-hooks-contrib that PyInstaller picks up automatically, so
+# they don't need collect_all here.
 for pkg in ("ctranslate2", "tokenizers", "huggingface_hub", "faster_whisper", "av", "onnxruntime"):
     pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(pkg)
     datas += pkg_datas
     binaries += pkg_binaries
     hiddenimports += pkg_hiddenimports
 
-hiddenimports += [
-    "uvicorn.logging",
-    "uvicorn.loops",
-    "uvicorn.loops.auto",
-    "uvicorn.protocols",
-    "uvicorn.protocols.http",
-    "uvicorn.protocols.http.auto",
-    "uvicorn.protocols.websockets",
-    "uvicorn.protocols.websockets.auto",
-    "uvicorn.lifespan",
-    "uvicorn.lifespan.on",
-]
-
 a = Analysis(
-    ["webapp.py"],
+    ["app.py"],
     pathex=[str(PROJECT_DIR)],
     binaries=binaries,
     datas=datas,
@@ -72,7 +62,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

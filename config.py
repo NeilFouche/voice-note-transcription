@@ -1,9 +1,9 @@
 """
-Pipeline configuration.
+App configuration.
 
 Defaults live below and are anchored to two directories:
 
-* BASE_DIR - writable data (Audio Files, Complete, logs, the final output,
+* BASE_DIR - writable data (logs, the small performance-calibration file,
   config.local.toml). When running from source this is this file's own
   folder; when packaged (PyInstaller), it's the folder containing the
   .exe itself, so the app's working files sit somewhere the user can find
@@ -13,9 +13,10 @@ Defaults live below and are anchored to two directories:
   these under sys._MEIPASS, which is a different location from BASE_DIR
   for a folder build - hence the two separate roots.
 
-Either way the app behaves the same no matter what folder it's launched
-from (a double-clicked shortcut, a scheduled task, etc.), not just a
-terminal sitting in the project root.
+There's no input/output folder pipeline here - each run processes
+whatever files the user picks in the app and saves the result wherever
+they choose via a native Save dialog, so there's nothing to anchor beyond
+logs and the tiny calibration cache.
 
 To override any setting for this machine without touching tracked code,
 create a `config.local.toml` next to this file (see config.example.toml
@@ -40,14 +41,10 @@ LOCAL_CONFIG_PATH = BASE_DIR / "config.local.toml"
 
 @dataclass
 class Settings:
-    input_dir: Path
-    transcript_clean_output: Path
-    transcript_error_output: Path
     dictionaries_repo: Path
     models_repo: Path
-    processing_repo: Path
     logs_repo: Path
-    final_output_dir: Path
+    data_repo: Path
     target_filename: str = "transcriptions.xlsx"
     general_log_filename: str = "processing_history.log"
     transcription_log_filename: str = "transcription.log"
@@ -59,21 +56,11 @@ class Settings:
         self.general_log_path: Path = self.logs_repo / self.general_log_filename
         self.transcription_log_path: Path = self.logs_repo / self.transcription_log_filename
         self.errors_log_path: Path = self.logs_repo / self.errors_log_filename
-        self.serialized_repo: Path = self.processing_repo / "serialized"
-        self.processed_index_path: Path = self.processing_repo / "_processed_index.txt"
-        self.performance_stats_path: Path = self.processing_repo / "_performance_stats.json"
+        self.performance_stats_path: Path = self.data_repo / "_performance_stats.json"
 
     def ensure_dirs(self):
-        """Create every writable directory the pipeline reads from or writes to."""
-        for directory in (
-            self.input_dir,
-            self.transcript_clean_output,
-            self.transcript_error_output,
-            self.processing_repo,
-            self.serialized_repo,
-            self.final_output_dir,
-            self.logs_repo,
-        ):
+        """Create every writable directory the app reads from or writes to."""
+        for directory in (self.logs_repo, self.data_repo):
             directory.mkdir(parents=True, exist_ok=True)
 
 
@@ -118,14 +105,10 @@ def _setting(key: str, default):
 
 
 settings = Settings(
-    input_dir=_resolve_writable_path(_setting("input_dir", "Audio Files")),
-    transcript_clean_output=_resolve_writable_path(_setting("transcript_clean_output", "Complete")),
-    transcript_error_output=_resolve_writable_path(_setting("transcript_error_output", "Not Transcribed")),
     dictionaries_repo=_resolve_resource_path(_setting("dictionaries_repo", "dictionaries")),
     models_repo=_resolve_resource_path(_setting("models_repo", "models")),
-    processing_repo=_resolve_writable_path(_setting("processing_repo", "processing")),
     logs_repo=_resolve_writable_path(_setting("logs_repo", "logs")),
-    final_output_dir=_resolve_writable_path(_setting("final_output_dir", "Transcription")),
+    data_repo=_resolve_writable_path(_setting("data_repo", "data")),
     target_filename=_setting("target_filename", "transcriptions.xlsx"),
     general_log_filename=_setting("general_log_filename", "processing_history.log"),
     transcription_log_filename=_setting("transcription_log_filename", "transcription.log"),
