@@ -67,7 +67,9 @@ REPLACEMENTS = {
     "correct": "korrek",
     "commercieel": "kommersieel",
     "rechts": "regs",
-    "bykie": "bietjie"
+    "bykie": "bietjie",
+    "biekie": "bietjie",
+    "beekie": "bietjie",
 }
 
 _REPLACEMENTS_PATTERN = re.compile(
