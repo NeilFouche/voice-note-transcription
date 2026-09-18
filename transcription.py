@@ -46,6 +46,7 @@ AUDIO_EXTENSIONS = {".ogg", ".mp3", ".wav", ".mp4", ".flac", ".opus"}
 RULES = [
     (r"sch", "sk"),
     (r"ische", "iese"),
+    (r"isch", "ies"),
     (r"ij", "y"),
     (r"y", "i"),
     (r"tie\b", "sie"),
@@ -70,6 +71,7 @@ REPLACEMENTS = {
     "bykie": "bietjie",
     "biekie": "bietjie",
     "beekie": "bietjie",
+    "persoonlise": "besonderse"
 }
 
 _REPLACEMENTS_PATTERN = re.compile(
